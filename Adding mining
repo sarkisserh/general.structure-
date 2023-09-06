@@ -1,0 +1,79 @@
+import hashlib
+import json
+from time import time
+from uuid import uuid4
+from flask import Flask, jsonify, request
+
+class Blockchain:
+    def __init__(self):
+        self.chain = []
+        self.current_transactions = []
+        self.new_block(previous_hash="1", proof=100)
+
+    def new_block(self, proof, previous_hash=None):
+        block = {
+            'index': len(self.chain) + 1,
+            'timestamp': time(),
+            'transactions': self.current_transactions,
+            'proof': proof,
+            'previous_hash': previous_hash or self.hash(self.chain[-1]) if self.chain else None,
+        }
+
+        self.current_transactions = []
+        self.chain.append(block)
+        return block
+
+    def new_transaction(self, sender, recipient, amount):
+        self.current_transactions.append({
+            'sender': sender,
+            'recipient': recipient,
+            'amount': amount,
+        })
+
+    @staticmethod
+    def hash(block):
+        return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
+
+    def proof_of_work(self, last_proof):
+        proof = 0
+        while self.valid_proof(last_proof, proof) is False:
+            proof += 1
+        return proof
+
+    @staticmethod
+    def valid_proof(last_proof, proof):
+        guess = f'{last_proof}{proof}'.encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        return guess_hash[:4] == "0000"  # Простой пример условия для Proof of Work
+
+# Создаем Flask приложение
+app = Flask(__name__)
+blockchain = Blockchain()
+
+@app.route('/mine', methods=['GET'])
+def mine():
+    last_block = blockchain.chain[-1]
+    last_proof = last_block['proof']
+    proof = blockchain.proof_of_work(last_proof)
+
+    # Добавляем вознаграждение за майнинг
+    blockchain.new_transaction(
+        sender="0",  # Отправитель "0" означает, что это новые монеты
+        recipient=uuid4().hex,  # Приемник - адрес майнера
+        amount=1,  # Вознаграждение за майнинг
+    )
+
+    # Создаем новый блок и добавляем его в цепь
+    previous_hash = blockchain.hash(last_block)
+    block = blockchain.new_block(proof, previous_hash)
+
+    response = {
+        'message': "Новый блок успешно создан",
+        'index': block['index'],
+        'transactions': block['transactions'],
+        'proof': block['proof'],
+        'previous_hash': block['previous_hash'],
+    }
+    return jsonify(response), 200
+
+# Остальной код остается без изменений
